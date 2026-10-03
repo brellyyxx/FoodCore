@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "MeinProjekt",
-    "slug": "MeinProjekt",
+    "name": "FoodCore",
+    "slug": "FoodCore",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
+      "bundleIdentifier": "com.brellyyxx.FoodCore"
     },
     "android": {
       "adaptiveIcon": {
