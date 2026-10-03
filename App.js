@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, SafeAreaView, StatusBar, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, SafeAreaView, StatusBar, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // <--- IMPORTIERT
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 // Speicher-Key für AsyncStorage
 const STORAGE_KEY = '@food_list_data';
@@ -124,6 +127,35 @@ function ShoppingListScreen({ foodList, toggleMissingStatus }) {
   );
 }
 
+function SettingsScreen({ exportData, importData }) {
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Einstellungen</Text>
+        <Text style={styles.headerSubtitle}>Backup & Datenverwaltung</Text>
+      </View>
+
+      <View style={styles.settingsContainer}>
+        <TouchableOpacity style={styles.settingsButton} onPress={exportData} activeOpacity={0.8}>
+          <Ionicons name="cloud-upload-outline" size={22} color="#ffffff" style={{ marginRight: 12 }} />
+          <View>
+            <Text style={styles.settingsButtonText}>Liste exportieren</Text>
+            <Text style={styles.settingsButtonSub}>Als Backup-Datei speichern / teilen</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.settingsButton} onPress={importData} activeOpacity={0.8}>
+          <Ionicons name="cloud-download-outline" size={22} color="#ffffff" style={{ marginRight: 12 }} />
+          <View>
+            <Text style={styles.settingsButtonText}>Liste importieren</Text>
+            <Text style={styles.settingsButtonSub}>Vorrat aus Backup-Datei laden</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 // --- HAUPTKOMPONENTE ---
 
 export default function App() {
@@ -161,7 +193,7 @@ export default function App() {
       item.id === id ? { ...item, isMissing: !item.isMissing } : item
     );
     setFoodList(updatedList);
-    saveData(updatedList); // Direkt speichern
+    saveData(updatedList);
   };
 
   // Neues Lebensmittel hinzufügen
@@ -176,7 +208,7 @@ export default function App() {
 
     const updatedList = [newItem, ...foodList];
     setFoodList(updatedList);
-    saveData(updatedList); // Direkt speichern
+    saveData(updatedList);
     setNewItemName('');
   };
 
@@ -184,7 +216,51 @@ export default function App() {
   const deleteItem = (id) => {
     const updatedList = foodList.filter((item) => item.id !== id);
     setFoodList(updatedList);
-    saveData(updatedList); // Direkt speichern
+    saveData(updatedList);
+  };
+
+  // 3. Export-Funktion
+  const exportData = async () => {
+    try {
+      const fileUri = FileSystem.documentDirectory + 'foodcore_backup.json';
+      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(foodList, null, 2));
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+      } else {
+        Alert.alert('Fehler', 'Teilen ist auf diesem Gerät nicht verfügbar.');
+      }
+    } catch (error) {
+      console.error('Export-Fehler:', error);
+      Alert.alert('Fehler', 'Exportieren fehlgeschlagen.');
+    }
+  };
+
+  // 4. Import-Funktion über Dateiauswahl
+  const importData = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const fileUri = result.assets[0].uri;
+        const fileContent = await FileSystem.readAsStringAsync(fileUri);
+        const parsedData = JSON.parse(fileContent);
+
+        if (Array.isArray(parsedData)) {
+          setFoodList(parsedData);
+          saveData(parsedData);
+          Alert.alert('Erfolg', 'Die Liste wurde erfolgreich importiert!');
+        } else {
+          Alert.alert('Fehler', 'Die Datei hat ein ungültiges Format.');
+        }
+      }
+    } catch (error) {
+      console.error('Import-Fehler:', error);
+      Alert.alert('Fehler', 'Importieren fehlgeschlagen.');
+    }
   };
 
   return (
@@ -199,14 +275,16 @@ export default function App() {
             height: 75,
             paddingBottom: 8,
           },
-          tabBarActiveTintColor: '#f007f8',
-          tabBarInactiveTintColor: '#fcfcfc',
+          tabBarActiveTintColor: '#3b82f6',
+          tabBarInactiveTintColor: '#888888',
           tabBarIcon: ({ focused, color, size }) => {
             let iconName;
             if (route.name === 'Mein Vorrat') {
               iconName = focused ? 'home' : 'home-outline';
             } else if (route.name === 'Einkaufsliste') {
               iconName = focused ? 'cart' : 'cart-outline';
+            } else if (route.name === 'Einstellungen') {
+              iconName = focused ? 'settings' : 'settings-outline';
             }
             return <Ionicons name={iconName} size={size} color={color} />;
           },
@@ -229,6 +307,14 @@ export default function App() {
             <ShoppingListScreen
               foodList={foodList}
               toggleMissingStatus={toggleMissingStatus}
+            />
+          )}
+        </Tab.Screen>
+        <Tab.Screen name="Einstellungen">
+          {() => (
+            <SettingsScreen
+              exportData={exportData}
+              importData={importData}
             />
           )}
         </Tab.Screen>
@@ -366,5 +452,28 @@ const styles = StyleSheet.create({
     color: '#888888',
     fontSize: 16,
     marginTop: 12,
+  },
+  settingsContainer: {
+    padding: 16,
+  },
+  settingsButton: {
+    backgroundColor: '#1e1e1e',
+    borderWidth: 1,
+    borderColor: '#2d2d2d',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  settingsButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  settingsButtonSub: {
+    color: '#888888',
+    fontSize: 12,
+    marginTop: 2,
   },
 });
